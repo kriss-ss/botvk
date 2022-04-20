@@ -74,8 +74,8 @@ class Bot:
             self.get_wikipedia()
         elif self.message[0:4] == 'бан ':
             self.delete_user()
-        elif "мут " in self.message:
-            self.send_message("я тебя щас забаню нахуй еблан")
+        elif self.message[0:15] == 'русская рулетка':
+            self.russian_roulette()
 
     def send_message(self, message):  # отправка сообщения
         self.peer_id = int(self.peer_id)
@@ -84,6 +84,42 @@ class Bot:
             message=message,
             random_id=randint(0, 1000000000),
         )
+
+    def delete_user(self, member=0):
+        peer_id = int(self.peer_id)
+        try:
+            if member:
+                member_id = member
+            else:
+                member_id = int(self.message.split("[")[1][2:].split("|")[0])
+            vk.messages.removeChatUser(
+                chat_id=peer_id - 2000000000,
+                member_id=member_id,
+            )
+        except Exception as e:
+            if "[15]" in str(e):
+                self.send_message('Вы не можете забанить администратора')
+            elif "[935]" in str(e):
+                self.send_message('Этого участника нет в беседе')
+            else:
+                self.send_message('Неверный ввод данных')
+
+    def russian_roulette(self):
+        from_id = int(self.from_id)
+        message = self.message.split()
+        bullet = randint(0, 9)
+        num = -1
+        try:
+            num = int(message[2:][0])
+            if not 0 <= num <= 9:
+                raise Exception
+        except Exception:
+            print('Неверный ввод данных')
+        print(bullet, num)
+        if bullet == num:
+            self.delete_user(member=from_id)
+            return 0
+        self.send_message('Тебе повезло...')
 
     def random_char(self):
         num = str(self.message.split()[2])
@@ -405,7 +441,7 @@ class Bot:
             self.send_message('Вам уже брошен вызов')
             return 0
         if sl[peer_id]['play_in_zeros'][from_id] == 2:
-            self.send_message('Вы уже играет с кем-то')
+            self.send_message('Вы уже играете с кем-то')
             return 0
         sl[peer_id]['play_in_zeros'][id] = 1
         sl[peer_id]['play_in_zeros'][from_id] = 1
@@ -568,7 +604,7 @@ class Bot:
         if message == 'погода' or message == 'Погода на сегодня':
             self.get_weather_to_some_days(1)
             return 0
-        elif message == 'погода на завтра' or message == 'погода на завтро':
+        elif message == 'погода на завтра':
             self.get_weather_to_tomorrow()
             return 0
         message = message.split()
@@ -607,27 +643,26 @@ class Bot:
                                                 weather[str(i) + 'wind_speed'])
         self.send_message(message_)
 
-    def get_weather_to_some_days(self,
-                                 num):  # возращает сообщение с погодой на определённое число дней
-        messag = ''
+    def get_weather_to_some_days(self, num):  # возращает сообщение с погодой на определённое число дней
+        message_ = ''
         weather = self.get_weather_days(num)
         for i in range(num):
             date = str(self.from_second_to_date(weather[str(i) + 'date']))[:-8]
-            messag += 'Погода на {}\n\n' \
-                      'Днём {}°, ощущается как {}°\n' \
-                      'Ночью {}°, ощущается как {}°\n' \
-                      'Будет {}\n' \
-                      'Ветер {} М/С\n\n\n'.format(date,
-                                                  weather[
-                                                      str(i) + 'temp_afternoon'],
-                                                  weather[str(
-                                                      i) + 'feels_temp_afternoon'],
-                                                  weather[str(i) + 'temp_night'],
-                                                  weather[str(
-                                                      i) + 'feels_temp_night'],
-                                                  weather[str(i) + 'clouds'],
-                                                  weather[str(i) + 'wind_speed'])
-        self.send_message(messag)
+            message_ += 'Погода на {}\n\n' \
+                        'Днём {}°, ощущается как {}°\n' \
+                        'Ночью {}°, ощущается как {}°\n' \
+                        'Будет {}\n' \
+                        'Ветер {} М/С\n\n\n'.format(date,
+                                                    weather[
+                                                        str(i) + 'temp_afternoon'],
+                                                    weather[str(
+                                                        i) + 'feels_temp_afternoon'],
+                                                    weather[str(i) + 'temp_night'],
+                                                    weather[str(
+                                                        i) + 'feels_temp_night'],
+                                                    weather[str(i) + 'clouds'],
+                                                    weather[str(i) + 'wind_speed'])
+        self.send_message(message_)
 
     def get_weather_days(self, num):  # отправляет API запрос для погоды и преобразует его в удобную форму
         api_key = '52d406bba24fd0df794d9978adcfc392'
