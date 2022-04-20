@@ -1,15 +1,15 @@
 import json
 from random import randint, choice
 import pymorphy2
-# import wikipedia
-# from gtts import gTTS
+import wikipedia
+from gtts import gTTS
 # from pprint import pprint
 import requests
 from vk_api import VkApi
 import datetime as dt
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
-from time import sleep
+import time
 
 
 class Bot:
@@ -63,6 +63,19 @@ class Bot:
             self.cancel_played()
         elif 'погода на' in self.message or self.message == 'погода':
             self.get_weather()
+        elif '+setting ' in self.message:
+            self.change_settings()
+        elif 'add_subject' in self.message:
+            self.add_subject()
+        elif 'дз ' == self.message[0:3]:
+            self.call_subject()
+        elif self.message[0:10:] == 'википедия ':
+            self.send_message("Ищу " + self.message[10:])
+            self.get_wikipedia()
+        elif self.message[0:4] == 'бан ':
+            self.delete_user()
+        elif "мут " in self.message:
+            self.send_message("я тебя щас забаню нахуй еблан")
 
     def send_message(self, message):  # отправка сообщения
         self.peer_id = int(self.peer_id)
@@ -642,6 +655,57 @@ class Bot:
             res_weather[str(n) + 'clouds'] = weather['daily'][n]['weather'][0]['description']
         return res_weather
 
+    def get_wikipedia(self):
+        start_time = time.perf_counter()
+        peer_id = self.peer_id
+        message = self.message[10::]
+
+        def get_text_wikipedia(message):
+            wikipedia.set_lang('ru')
+            r = wikipedia.search(message)
+            return wikipedia.page(r[0]).content
+
+        try:
+            text = get_text_wikipedia(message).split("\n")[0]
+            # text = text.split("\n")[0]
+            # print(imgs)
+            myobj = gTTS(text=text, lang='ru', slow=True)
+            myobj.save("voice1.mp3")
+            a = vk.docs.getMessagesUploadServer(type='audio_message', peer_id=peer_id)
+            b = requests.post(a['upload_url'], files={
+                'file': open("D:\\python\\vkbotremake\\voice1.mp3",
+                             'rb')}).json()
+            a2 = vk.method("photos.getMessagesUploadServer")
+            f = requests.post(a2['upload_url'], files={'photo': open('res.jpg', 'rb')}).json()
+            cc = vk.method('photos.saveMessagesPhoto', {'photo': f['photo'], 'server': f['server'], 'hash': f['hash']})[
+                0]
+            dd = "photo{}_{}".format(cc["owner_id"], cc["id"])
+            vk.messages.send(
+                peer_id=peer_id,
+                attachment=dd,
+                message='бебра',
+                random_id=randint(1, 100000000)
+            )
+            #vk.method("messages.send", {"peer_id": s, "message": "Ваша картинка", "attachment": d, "random_id": 0})
+            c = vk.docs.save(file=b["file"])['audio_message']
+            d = 'audio{}_{}'.format(c['owner_id'], c['id'])
+            self.send_message(text)
+            vk.messages.send(
+                peer_id=peer_id,
+                attachment=d,
+                message='Здесь должна быть прикреплина аудиозапись с этой ссылкой ' + c['link_mp3'],
+                random_id=randint(1, 100000000)
+            )
+            vk.messages.send(
+                peer_id=peer_id,
+                message='Запрос выполнялся ' + str
+                (time.perf_counter() - start_time),
+                random_id=randint(1, 100000000)
+            )
+            return 0
+        except Exception:
+            pass
+
 
 def main():
     while True:
@@ -656,12 +720,6 @@ def main():
                       if elem['type'] == 'photo']
             Bot(peer_id, message, from_id, photos)
 
-            # elif '+setting ' in message:
-            #     change_settings(peer_id, message)
-            # elif 'add_subject' in message:
-            #     add_subject(peer_id, message)
-            # elif 'дз ' == message[0:3]:
-            #     call_subject(peer_id, message)
             # elif message == "правила 21" or message.split()[0] == "21" \
             #         or message == "[club196697372|@godofnatural] не хочу" \
             #         or message == "[club196697372|@godofnatural] принять" or message == "ещё карту" \
@@ -672,9 +730,6 @@ def main():
             #     static_coronavirus(peer_id)
             # elif message[0:6] == '!скин ':
             #     message_for_skin(peer_id, message)
-            # # elif message[0:10:] == 'википедия ':
-            # #     print('Ok', message[10::])
-            # #     get_wikipedia(peer_id, message[10::])
 
 
 token = "ffe517a0e394b9d6df6d624d16dd58102ad0de99c8c8f08468628085d7e11e5d08953b42d69e553fccc64"
