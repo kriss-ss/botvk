@@ -1,15 +1,36 @@
 import json
-from random import randint, choice
+from random import randint, choice, shuffle
 import pymorphy2
 import wikipedia
 from gtts import gTTS
-# from pprint import pprint
 import requests
 from vk_api import VkApi
 import datetime as dt
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 import time
+
+
+def photo(user_id, photo_cart):
+    # отправляет фото выбранное в функциях(players1/2)
+    vk.messages.send(
+        user_id=user_id,
+        random_id=randint(0, 1000000000),
+        attachment=photo_cart
+    )
+
+
+def send_message_user(user_id, message):
+    # отправка сообщений ботом в личные сообщения, прилагая кнопки
+    keyboard = VkKeyboard(one_time=True)
+    keyboard.add_button("Ещё карту", color=VkKeyboardColor.NEGATIVE)
+    keyboard.add_button("Достаточно!", color=VkKeyboardColor.POSITIVE)
+    vk.messages.send(
+        user_id=user_id,
+        message=message,
+        random_id=randint(0, 1000000000),
+        keyboard=keyboard.get_keyboard(),
+    )
 
 
 class Bot:
@@ -23,6 +44,7 @@ class Bot:
         self.check_message()
 
     def check_message(self):
+        self.check_for_static()
         if self.message[0:17:] == 'рандомный символ ':
             self.random_char()
         elif self.message == 'подписаны ли на группу' or self.message == "лень писат":
@@ -69,13 +91,148 @@ class Bot:
             self.add_subject()
         elif 'дз ' == self.message[0:3]:
             self.call_subject()
-        elif self.message[0:10:] == 'википедия ':
+        elif self.message[:10:] == 'википедия ':
             self.send_message("Ищу " + self.message[10:])
             self.get_wikipedia()
-        elif self.message[0:4] == 'бан ':
+        elif self.message[:4] == 'бан ':
             self.delete_user()
-        elif self.message[0:15] == 'русская рулетка':
+        elif self.message[:15] == 'русская рулетка':
             self.russian_roulette()
+        elif self.message[:5] == "21 с ":
+            self.offer()
+        elif self.message == "[club196697372|@godofnatural] не хочу":
+            self.decline_offer()
+        elif self.message == "[club196697372|@godofnatural] принять":
+            self.accept_offer()
+        elif self.message == "достаточно!":
+            self.final_game()
+        elif self.message == "ещё карту":
+            self.new_card()
+        elif self.message == "отмена 21":
+            self.end_21game()
+
+    def check_for_static(self):
+        peer_id = str(self.peer_id)
+        from_id = str(self.from_id)
+        with open('conversations.json') as f:
+            sl = json.load(f)
+        sl[peer_id]['static_for_messages'][from_id] += 1
+        with open('conversations.json', "w") as f:
+            f.write(json.dumps(sl, ensure_ascii=False))
+
+    def final_game(self):
+        with open('conversations.json') as f:
+            sl = json.load(f)
+        peer_id = "2000000005"
+        if sl[peer_id]["21_game"]["in_game"] and self.from_id in sl[peer_id]["21_game"]["players"]["id"]:
+            if not sl[peer_id]["21_game"]["check_player_end"]:
+                sl[peer_id]["21_game"]["check_player_end"] = True
+                with open('conversations.json', "w") as f:
+                    f.write(json.dumps(sl, ensure_ascii=False))
+            else:
+                score_f = sl[peer_id]["21_game"]["players"]["score"][0]
+                score_s = sl[peer_id]["21_game"]["players"]["score"][1]
+                self.peer_id = peer_id
+                if score_f > 21 and score_s > 21 or score_s == score_f:
+                    self.send_message("Увы, победителей нет(\nИгра окончена")
+                elif score_s < score_f <= 21 or score_f <= 21 and score_s > 21:
+                    self.send_message("У нас есть победитель!!!\nИгра окончена")
+                    self.send_message("Победил [id" + str(sl[peer_id]["21_game"]["players"]["id"][0])
+                                      + "|" + sl[peer_id]["21_game"]["players"]["name"][0] + "]")
+
+                elif score_f < score_s <= 21 or score_s <= 21 and score_f > 21:
+                    self.send_message("У нас есть победитель!!!\nИгра окончена")
+                    self.send_message("Победил [id" + str(sl[peer_id]["21_game"]["players"]["id"][1])
+                                      + "|" + sl[peer_id]["21_game"]["players"]["name"][1] + "]")
+                for i in range(2):
+                    self.send_message("[id" + str(sl[peer_id]["21_game"]["players"]["id"][i])
+                                      + "|" + sl[peer_id]["21_game"]["players"]["name"][i] + "] Набрал "
+                                      + str(sl[peer_id]["21_game"]["players"]["score"][i]) + " очков")
+                self.end_21game()
+
+    def new_card(self):
+        with open('conversations.json') as f:
+            sl = json.load(f)
+        peer_id = "2000000005"
+        if sl[peer_id]["21_game"]["in_game"] and self.from_id in sl[peer_id]["21_game"]["players"]["id"]:
+            card = sl[peer_id]["21_game"]["cards"].pop()
+            photo(self.from_id, "photo-197213529_4572390" + card[0])
+            index_player = sl[peer_id]["21_game"]["players"]["id"].index(self.from_id)
+            sl[peer_id]["21_game"]["players"]["score"][index_player] += card[1]
+            send_message_user(self.from_id,
+                              "Ваши текущие очки - "
+                              + str(sl[peer_id]["21_game"]["players"]["score"][index_player]))
+        with open('conversations.json', "w") as f:
+            f.write(json.dumps(sl, ensure_ascii=False))
+
+    def accept_offer(self):
+        peer_id = str(self.peer_id)
+        self.send_message("Игра начинается, чек лс")
+        with open('conversations.json') as f:
+            sl = json.load(f)
+        sl[peer_id]["21_game"]["in_game"] = True
+        for _ in range(2):
+            cards = [sl[peer_id]["21_game"]["cards"].pop(), sl[peer_id]["21_game"]["cards"].pop()]
+            for k in range(2):
+                photo(sl[peer_id]["21_game"]["players"]["id"][k], "photo-197213529_4572390" + cards[k][0])
+                sl[peer_id]["21_game"]["players"]["score"][k] += cards[k][1]
+                send_message_user(sl[peer_id]["21_game"]["players"]["id"][k],
+                                  "Ваши текущие очки - "
+                                  + str(sl[peer_id]["21_game"]["players"]["score"][k]))
+        with open('conversations.json', "w") as f:
+            f.write(json.dumps(sl, ensure_ascii=False))
+
+    def end_21game(self):
+        with open('conversations.json') as f:
+            sl = json.load(f)
+        sl[str(self.peer_id)]["21_game"] = {
+            "players": {"id": [0, 0], "name": ["", ""], "score": [0, 0], "attempts": [0, 0]},
+            "in_game": False,
+            "check_player_end": False,
+            "cards": [["57", 4], ["58", 11], ["59", 6], ["60", 7], ["61", 8], ["62", 9], ["63", 10], ["64", 2],
+                      ["65", 3], ["66", 4], ["67", 11], ["68", 6], ["69", 7], ["70", 8], ["71", 9], ["72", 10],
+                      ["73", 2], ["74", 3], ["75", 4], ["76", 11], ["77", 6], ["78", 7], ["79", 8], ["80", 9],
+                      ["81", 10], ["82", 2], ["83", 3], ["84", 11], ["85", 6], ["86", 7], ["87", 8], ["88", 9],
+                      ["89", 10], ["90", 2], ["91", 3], ["92", 4]]}
+        with open('conversations.json', "w") as f:
+            f.write(json.dumps(sl, ensure_ascii=False))
+
+    def decline_offer(self):
+        peer_id = str(self.peer_id)
+        with open('conversations.json') as f:
+            sl = json.load(f)
+        if self.from_id != sl[peer_id]["21_game"]["players"]["id"][1]:
+            self.send_message("Предложение было отправленно не вам")
+        else:
+            self.send_message("Принято")
+            self.end_21game()
+
+    def offer(self):
+        # отправляет предложение о игре в беседу, прилагая кнопки на сообщении
+        with open('conversations.json') as f:
+            sl = json.load(f)
+        if sl[self.peer_id]["21_game"]["in_game"]:
+            self.send_message(
+                'Подождите окончания игры! Или если вы являетесь участником, напишите "отмена 21"')
+        else:
+            self.end_21game()
+            f = vk.users.get(user_ids=self.from_id)[0]
+            s = vk.users.get(user_ids=self.message[8:17])[0]
+            sl[self.peer_id]["21_game"]["players"]["id"] = [self.from_id, int(self.message[8:17])]
+            sl[self.peer_id]["21_game"]["players"]["name"] = [f['first_name'] + ' ' + f['last_name'],
+                                                              s['first_name'] + ' ' + s['last_name']]
+            shuffle(sl[self.peer_id]["21_game"]["cards"])
+            keyboard = VkKeyboard(inline=True)
+            keyboard.add_button("Принять", color=VkKeyboardColor.POSITIVE)
+            keyboard.add_button("Не хочу", color=VkKeyboardColor.NEGATIVE)
+            vk.messages.send(
+                peer_id=self.peer_id,
+                message="Ожидание подтверждения",
+                random_id=randint(0, 1000000000),
+                keyboard=keyboard.get_keyboard(),
+            )
+        with open('conversations.json', "w") as f:
+            f.write(json.dumps(sl, ensure_ascii=False))
 
     def send_message(self, message):  # отправка сообщения
         self.peer_id = int(self.peer_id)
@@ -115,7 +272,6 @@ class Bot:
                 raise Exception
         except Exception:
             print('Неверный ввод данных')
-        print(bullet, num)
         if bullet == num:
             self.delete_user(member=from_id)
             return 0
@@ -143,8 +299,18 @@ class Bot:
         with open('list_of_conversations.json', 'w') as f:
             f.write(json.dumps(sp, ensure_ascii=False))
         sl = {'names': {}, 'can_send_weather': True, 'can_send_random': True,
-              'can_change_nik': True, 'static_for_random': {}, 'list_id': [], 'title': 'натуралом', 'subjects': {},
-              'play_in_zeros': {}, 'waiting_for_confirmation': {}, 'plaing_in_zeros': {}, 'in_zeros': {}}
+              'can_change_nik': True, 'static_for_random': {}, 'static_for_messages': {}, 'list_id': [],
+              'title': 'натуралом', 'subjects': {},
+              'play_in_zeros': {}, 'waiting_for_confirmation': {}, 'plaing_in_zeros': {}, 'in_zeros': {}, "21_game": {
+                "players": {"conversation": 0, "id": [0, 0], "name": ["", ""], "score": [0, 0], "attempts": [0, 0]},
+                "in_game": False,
+                "check_player_end": False,
+                "cards": [["57", 4], ["58", 11], ["59", 6], ["60", 7], ["61", 8], ["62", 9], ["63", 10], ["64", 2],
+                          ["65", 3], ["66", 4], ["67", 11], ["68", 6], ["69", 7], ["70", 8], ["71", 9], ["72", 10],
+                          ["73", 2], ["74", 3], ["75", 4], ["76", 11], ["77", 6], ["78", 7], ["79", 8], ["80", 9],
+                          ["81", 10], ["82", 2], ["83", 3], ["84", 11], ["85", 6], ["86", 7], ["87", 8], ["88", 9],
+                          ["89", 10], ["90", 2], ["91", 3], ["92", 4]]
+            }}
         try:
             list_of_people = vk.messages.getConversationMembers(peer_id=self.peer_id)
             for people in list_of_people['profiles']:
@@ -152,6 +318,7 @@ class Bot:
                 sl['names'][str(people['id'])] = people['first_name'] + " " + people['last_name']
                 sl['play_in_zeros'][str(people['id'])] = 0
                 sl['static_for_random'][str(people['id'])] = 0
+                sl['static_for_messages'][str(people['id'])] = 0
             with open('conversations.json') as f:
                 sp228 = json.load(f)
             sp228[self.peer_id] = sl
@@ -216,6 +383,11 @@ class Bot:
             message += '[id' + user_id + '|' + sl[peer_id]['names'][user_id] + ']: ' + str(
                 sl[peer_id]['static_for_random'][user_id]) + '\n'
         self.send_message(message)
+        users = sl[peer_id]['static_for_messages']
+        users = sorted(users.items(), key=lambda item: item[1])
+        self.send_message(
+            f'Больше всего сообщений написал \
+[id{str(users[-1][0])}|{sl[peer_id]["names"][users[-1][0]]}]: {str(users[-1][1])}')
 
     def change_nik_from(self):  # функция по смене ника
         peer_id = str(self.peer_id)
@@ -251,7 +423,6 @@ class Bot:
         peer_id = str(self.peer_id)
         message = self.message.split()
         if message[0] == '+setting' and len(message) > 2:
-            print(message)
             try:
                 with open('conversations.json') as f:
                     sl = json.load(f)
@@ -721,7 +892,7 @@ class Bot:
                 message='бебра',
                 random_id=randint(1, 100000000)
             )
-            #vk.method("messages.send", {"peer_id": s, "message": "Ваша картинка", "attachment": d, "random_id": 0})
+            # vk.method("messages.send", {"peer_id": s, "message": "Ваша картинка", "attachment": d, "random_id": 0})
             c = vk.docs.save(file=b["file"])['audio_message']
             d = 'audio{}_{}'.format(c['owner_id'], c['id'])
             self.send_message(text)
@@ -754,17 +925,6 @@ def main():
             photos = [elem['photo']['sizes'][-1]['url'] for elem in event.object['message']['attachments']
                       if elem['type'] == 'photo']
             Bot(peer_id, message, from_id, photos)
-
-            # elif message == "правила 21" or message.split()[0] == "21" \
-            #         or message == "[club196697372|@godofnatural] не хочу" \
-            #         or message == "[club196697372|@godofnatural] принять" or message == "ещё карту" \
-            #         or message == "достаточно!" or message == "отмена 21":
-            #     game(from_id, peer_id, message)
-            # elif message == 'коронавирус статистика' or message == 'статистика коронавирус' \
-            #         or message == 'стата коронавирус' or message == 'коронавирус стата':
-            #     static_coronavirus(peer_id)
-            # elif message[0:6] == '!скин ':
-            #     message_for_skin(peer_id, message)
 
 
 token = "ffe517a0e394b9d6df6d624d16dd58102ad0de99c8c8f08468628085d7e11e5d08953b42d69e553fccc64"
