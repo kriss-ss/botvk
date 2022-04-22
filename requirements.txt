@@ -1,0 +1,5 @@
+gTTS==2.2.4
+pymorphy2==0.9.1
+wikipedia==1.4.0
+requests==2.27.1
+vk_api==11.9.7

@@ -1,0 +1,11 @@
+Проект состоит из класса и некоторых функций, которые не зависят от этого класса.
+Использует такие библтотеки:
+random
+json
+pymorphy2
+wikipedia
+gtts
+requests
+vk_api
+datetime
+time
